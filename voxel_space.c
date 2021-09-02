@@ -58,23 +58,27 @@ void destroy_voxel_space_context(voxel_space_context *ctx)
 	free(ctx);
 }
 
-inline uint32_t myabs(int i)
+// sample functions assume map sizes are a power of 2
+inline uint32_t get_index(float v, int modulus)
 {
-	return i < 0 ? -i : i;
+	if (v > 0)
+		return (uint32_t)v & modulus;
+
+	uint32_t abs_v = (uint32_t)(-v);
+	return modulus - (abs_v & modulus);
 }
 
-// sample functions assume map sizes are a power of 2
 uint8_t sample_depth(voxel_space_context *ctx, float x, float y)
 {
-	int ix = (myabs((int)(x))) & (ctx->dw - 1);
-	int iy = (myabs((int)(y))) & (ctx->dh - 1);
+	int ix = get_index(x, ctx->dw - 1);
+	int iy = get_index(y, ctx->dh - 1);
 	return ctx->depth_map[iy * ctx->dw + ix];
 }
 
 uint32_t sample_color(voxel_space_context *ctx, float x, float y)
 {
-	int ix = (myabs((int)(x))) & (ctx->cw - 1);
-	int iy = (myabs((int)(y))) & (ctx->ch - 1);
+	int ix = get_index(x, ctx->cw - 1);
+	int iy = get_index(y, ctx->ch - 1);
 	return ctx->color_map[iy * ctx->cw + ix];
 }
 
@@ -109,7 +113,7 @@ uint32_t *render_voxel_space(voxel_space_context *ctx, int w, int h, float phi)
 			free(ctx->output);
 		ctx->output = malloc(w * h * sizeof(uint32_t));
 	}
-	
+
 	ctx->out_w = w;
 	ctx->out_h = h;
 
