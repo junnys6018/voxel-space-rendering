@@ -11,8 +11,7 @@
 
 #define SCALE 0.65
 #define DISTANCE 512
-#define HORIZON 0.4
-#define FOV_SCALE 0.8
+#define FOV_SCALE 0.7
 
 typedef struct
 {
@@ -25,11 +24,10 @@ typedef struct
 	uint32_t *output;
 
 	uint32_t background;
-	float start_x, start_y;
 } voxel_space_context;
 
 EMSCRIPTEN_KEEPALIVE
-voxel_space_context *create_voxel_space_context(const char *color_map, const char *depth_map, float start_x, float start_y, uint32_t background)
+voxel_space_context *create_voxel_space_context(const char *color_map, const char *depth_map, uint32_t background)
 {
 	voxel_space_context *ctx = (voxel_space_context *)malloc(sizeof(voxel_space_context));
 	int n;
@@ -40,8 +38,6 @@ voxel_space_context *create_voxel_space_context(const char *color_map, const cha
 	ctx->output = NULL;
 
 	ctx->background = background;
-	ctx->start_x = start_x;
-	ctx->start_y = start_y;
 
 	printf("Created voxel space context: {color_map: \"%s\", depth_map: \"%s\", cw: %i, ch: %i}\n", color_map, depth_map, ctx->cw, ctx->ch);
 	return ctx;
@@ -61,11 +57,7 @@ void destroy_voxel_space_context(voxel_space_context *ctx)
 // sample functions assume map sizes are a power of 2
 inline uint32_t get_index(float v, int modulus)
 {
-	if (v > 0)
-		return (uint32_t)v & modulus;
-
-	uint32_t abs_v = (uint32_t)(-v);
-	return modulus - (abs_v & modulus);
+	return (int)floorf(v) & modulus;
 }
 
 uint8_t sample_depth(voxel_space_context *ctx, float x, float y)
@@ -97,7 +89,7 @@ void draw_line(voxel_space_context *ctx, int x, int y_begin, int y_end, uint32_t
 }
 
 EMSCRIPTEN_KEEPALIVE
-uint32_t *render_voxel_space(voxel_space_context *ctx, int w, int h, float phi)
+uint32_t *render_voxel_space(voxel_space_context *ctx, int w, int h, float phi, float xpos, float ypos, float pitch, int camera_height)
 {
 	static int y_buffer[2048];
 	if (w > 2048)
@@ -117,7 +109,7 @@ uint32_t *render_voxel_space(voxel_space_context *ctx, int w, int h, float phi)
 	ctx->out_w = w;
 	ctx->out_h = h;
 
-	const float horizon = HORIZON * h;
+	const float horizon = pitch * h;
 
 	const float fov = atan((float)w / h * FOV_SCALE);
 	const float length_scale_factor = 1.0 / cosf(fov);
@@ -140,19 +132,22 @@ uint32_t *render_voxel_space(voxel_space_context *ctx, int w, int h, float phi)
 	float dz = 1;
 	while (z < DISTANCE)
 	{
-		float start_x = start_x_dir * z + ctx->start_x;
-		float start_y = start_y_dir * z + ctx->start_y;
-		float end_x = end_x_dir * z + ctx->start_x;
-		float end_y = end_y_dir * z + ctx->start_y;
+		float start_x = start_x_dir * z;
+		float start_y = start_y_dir * z;
+		float end_x = end_x_dir * z;
+		float end_y = end_y_dir * z;
 
 		const float dx = (end_x - start_x) / w;
 		const float dy = (end_y - start_y) / w;
+
+		start_x += xpos;
+		start_y += ypos;
 
 		const float inv_z = SCALE * h / z;
 
 		for (int x = 0; x < w; x++)
 		{
-			const float height = horizon - (50 - sample_depth(ctx, start_x * map_ratio, start_y * map_ratio)) * inv_z;
+			const float height = horizon - (camera_height - sample_depth(ctx, start_x * map_ratio, start_y * map_ratio)) * inv_z;
 			if (height > y_buffer[x])
 			{
 				draw_line(ctx, x, y_buffer[x], height, sample_color(ctx, start_x, start_y));
